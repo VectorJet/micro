@@ -567,8 +567,9 @@ func (h *BufPane) DoKeyEvent(e Event) bool {
 func (h *BufPane) execAction(action BufAction, name string, te *tcell.EventMouse) bool {
 	if name != "Autocomplete" && name != "CycleAutocompleteBack" &&
 		name != "CycleAutocompleteForward" && name != "AcceptCompletion" &&
-		name != "CancelAutocomplete" {
+		name != "AcceptCompletionOrNewline" && name != "CancelAutocomplete" {
 		h.Buf.HasSuggestions = false
+		h.Buf.CompletionPopup = false
 	}
 
 	if !h.PluginCB("pre" + name) {
@@ -792,6 +793,7 @@ var BufKeyActions = map[string]BufKeyAction{
 	"CycleAutocompleteBack":     (*BufPane).CycleAutocompleteBack,
 	"CycleAutocompleteForward":  (*BufPane).CycleAutocompleteForward,
 	"AcceptCompletion":          (*BufPane).AcceptCompletion,
+	"AcceptCompletionOrNewline": (*BufPane).AcceptCompletionOrNewline,
 	"CancelAutocomplete":        (*BufPane).CancelAutocomplete,
 	"OutdentLine":               (*BufPane).OutdentLine,
 	"IndentLine":                (*BufPane).IndentLine,

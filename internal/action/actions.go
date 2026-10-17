@@ -899,7 +899,7 @@ func (h *BufPane) CycleAutocompleteForward() bool {
 // AcceptCompletion inserts the selected suffix and closes the popup.
 func (h *BufPane) AcceptCompletion() bool {
 	b := h.Buf
-	if !b.HasSuggestions || len(b.Completions) == 0 {
+	if !b.CompletionPopup || !b.HasSuggestions || len(b.Completions) == 0 {
 		return false
 	}
 	idx := b.CurSuggestion
@@ -913,6 +913,7 @@ func (h *BufPane) AcceptCompletion() bool {
 	b.Insert(loc, completion)
 	h.Cursor.GotoLoc(loc.Move(util.CharacterCountInString(completion), b))
 	b.HasSuggestions = false
+	b.CompletionPopup = false
 	b.Suggestions = nil
 	b.Completions = nil
 	b.CurSuggestion = -1
@@ -920,15 +921,37 @@ func (h *BufPane) AcceptCompletion() bool {
 	return true
 }
 
-// CancelAutocomplete dismisses the popup without modifying source text.
-func (h *BufPane) CancelAutocomplete() bool {
-	if !h.Buf.HasSuggestions {
+// AcceptCompletionOrNewline makes Enter accept a floating completion when
+// one is open, while preserving normal newline behavior everywhere else.
+func (h *BufPane) AcceptCompletionOrNewline() bool {
+	b := h.Buf
+	if b.CompletionPopup && b.HasSuggestions && len(b.Completions) > 0 {
+		return h.AcceptCompletion()
+	}
+
+	// Since this is a dedicated action rather than an action chain, preserve
+	// the normal newline plugin hooks explicitly.
+	if !h.PluginCB("preInsertNewline") {
 		return false
 	}
-	h.Buf.HasSuggestions = false
-	h.Buf.Suggestions = nil
-	h.Buf.Completions = nil
-	h.Buf.CurSuggestion = -1
+	success := h.InsertNewline()
+	if success {
+		success = h.PluginCB("onInsertNewline")
+	}
+	return success
+}
+
+// CancelAutocomplete dismisses a floating popup without modifying source text.
+func (h *BufPane) CancelAutocomplete() bool {
+	b := h.Buf
+	if !b.CompletionPopup || !b.HasSuggestions {
+		return false
+	}
+	b.HasSuggestions = false
+	b.CompletionPopup = false
+	b.Suggestions = nil
+	b.Completions = nil
+	b.CurSuggestion = -1
 	return true
 }
 

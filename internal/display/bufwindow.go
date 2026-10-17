@@ -2,7 +2,6 @@ package display
 
 import (
 	"strconv"
-	"strings"
 
 	runewidth "github.com/mattn/go-runewidth"
 	"github.com/zyedidia/micro/v2/internal/buffer"
@@ -821,174 +820,96 @@ func (w *BufWindow) displayScrollBar() {
 
 func (w *BufWindow) displayCompletionPopup() {
 	b := w.Buf
-	if !w.active || !b.HasSuggestions || len(b.Suggestions) == 0 {
+	if !w.active || !b.CompletionPopup || !b.HasSuggestions || len(b.Suggestions) == 0 {
 		return
 	}
 
 	screenWidth, screenHeight := screen.Screen.Size()
-	if screenWidth < 14 || screenHeight < 7 {
+	contentLeft := w.X + w.gutterOffset
+	contentRight := w.X + w.Width
+	if b.Settings["scrollbar"].(bool) && b.LinesNum() > w.Height && contentRight > contentLeft {
+		contentRight--
+	}
+	contentRight = util.Min(contentRight, screenWidth)
+	contentTop := util.Max(w.Y, 0)
+	contentBottom := util.Min(w.Y+w.bufHeight, screenHeight)
+	viewportWidth := contentRight - contentLeft
+	viewportHeight := contentBottom - contentTop
+	if viewportWidth < 10 || viewportHeight < 4 || screenWidth < 10 || screenHeight < 5 {
+		return
+	}
+
+	items := parseCompletionPopupItems(b.Suggestions)
+	selected := util.Clamp(b.CurSuggestion, 0, len(items)-1)
+	maxItemWidth := 0
+	for _, item := range items {
+		width := runewidth.StringWidth(item.label)
+		rightWidth := runewidth.StringWidth(item.kind) + runewidth.StringWidth(item.detail)
+		if item.kind != "" && item.detail != "" {
+			rightWidth++
+		}
+		width += rightWidth
+		if rightWidth > 0 {
+			width++
+		}
+		if width > maxItemWidth {
+			maxItemWidth = width
+		}
+	}
+	maxWidth := util.Min(58, viewportWidth)
+	popupWidth := util.Min(maxWidth, util.Max(26, maxItemWidth+4))
+	if popupWidth < 10 {
 		return
 	}
 
 	cursor := b.GetActiveCursor()
 	cursorVLoc := w.VLocFromLoc(cursor.Loc)
-	cursorX := w.X + w.gutterOffset + cursorVLoc.VisualX - w.StartCol
 	cursorY := w.Y + w.Diff(w.StartLine, cursorVLoc.SLoc)
-
 	_, wordStart := b.GetWord()
 	if wordStart < 0 {
 		wordStart = cursor.X
 	}
 	anchorVLoc := w.VLocFromLoc(buffer.Loc{X: wordStart, Y: cursor.Y})
 	popupX := w.X + w.gutterOffset + anchorVLoc.VisualX - w.StartCol
-	if popupX < 0 {
-		popupX = 0
-	}
+	popupX = util.Max(contentLeft, util.Min(popupX, contentRight-popupWidth))
 
-	maxWidth := util.Min(58, screenWidth-2)
-	maxLabelWidth := 0
-	for _, suggestion := range b.Suggestions {
-		label, meta, hasMeta := strings.Cut(suggestion, "\t")
-		width := runewidth.StringWidth(label)
-		if hasMeta && meta != "" {
-			width += runewidth.StringWidth(meta) + 3
-		}
-		if width > maxLabelWidth {
-			maxLabelWidth = width
-		}
-	}
-	popupWidth := util.Min(maxWidth, util.Max(26, maxLabelWidth+4))
-	if popupWidth > maxWidth {
-		popupWidth = maxWidth
-	}
-	if popupWidth < 8 {
-		return
-	}
-	if popupX+popupWidth >= screenWidth {
-		popupX = screenWidth - popupWidth - 1
-	}
-	if popupX < 0 {
-		popupX = 0
-	}
-
-	rows := util.Min(8, len(b.Suggestions))
-	maxRows := screenHeight - 5
-	if rows > maxRows {
-		rows = maxRows
-	}
+	rows := util.Min(8, len(items))
+	rows = util.Min(rows, viewportHeight-2)
 	if rows < 1 {
 		return
 	}
 	popupHeight := rows + 2
 	popupY := cursorY + 1
-	if popupY+popupHeight > screenHeight-2 {
+	if popupY+popupHeight > contentBottom {
 		popupY = cursorY - popupHeight
 	}
-	if popupY < 0 {
-		popupY = 0
+	if popupY < contentTop {
+		popupY = contentTop
 	}
-	if popupY+popupHeight > screenHeight-1 {
-		popupY = screenHeight - popupHeight - 1
+	if popupY+popupHeight > contentBottom {
+		popupY = contentBottom - popupHeight
 	}
-	if popupY < 0 {
+	if popupY < contentTop {
 		return
 	}
 
-	baseStyle := config.DefStyle
-	if style, ok := config.Colorscheme["statusline.suggestions"]; ok {
-		baseStyle = style
-	} else if style, ok := config.Colorscheme["statusline"]; ok {
-		baseStyle = style
-	}
-	borderStyle := baseStyle
-	if style, ok := config.Colorscheme["divider"]; ok {
-		borderStyle = style
-	}
-	selectedStyle := baseStyle.Reverse(true)
-
-	put := func(x, y int, r rune, style tcell.Style) {
-		if x >= 0 && x < screenWidth && y >= 0 && y < screenHeight {
-			screen.SetContent(x, y, r, nil, style)
-		}
-	}
-
-	// Rounded border and opaque backing make the list read as a proper popup.
-	put(popupX, popupY, '╭', borderStyle)
-	put(popupX+popupWidth-1, popupY, '╮', borderStyle)
-	put(popupX, popupY+popupHeight-1, '╰', borderStyle)
-	put(popupX+popupWidth-1, popupY+popupHeight-1, '╯', borderStyle)
-	for x := 1; x < popupWidth-1; x++ {
-		put(popupX+x, popupY, '─', borderStyle)
-		put(popupX+x, popupY+popupHeight-1, '─', borderStyle)
-	}
-	for y := 1; y < popupHeight-1; y++ {
-		put(popupX, popupY+y, '│', borderStyle)
-		put(popupX+popupWidth-1, popupY+y, '│', borderStyle)
-		for x := 1; x < popupWidth-1; x++ {
-			put(popupX+x, popupY+y, ' ', baseStyle)
-		}
-	}
-
-	first := b.CurSuggestion - rows/2
+	first := selected - rows/2
 	if first < 0 {
 		first = 0
 	}
-	if first > len(b.Suggestions)-rows {
-		first = len(b.Suggestions) - rows
-	}
-	for row := 0; row < rows; row++ {
-		idx := first + row
-		style := baseStyle
-		if idx == b.CurSuggestion {
-			style = selectedStyle
-		}
-		y := popupY + 1 + row
-		for x := 1; x < popupWidth-1; x++ {
-			put(popupX+x, y, ' ', style)
-		}
-
-		label, meta, hasMeta := strings.Cut(b.Suggestions[idx], "\t")
-		maxTextWidth := popupWidth - 4
-		metaWidth := 0
-		if hasMeta {
-			metaWidth = runewidth.StringWidth(meta)
-			maxTextWidth -= metaWidth + 1
-		}
-		if maxTextWidth < 1 {
-			maxTextWidth = 1
-		}
-		labelRunes := []rune(label)
-		textRunes := make([]rune, 0, len(labelRunes))
-		textWidth := 0
-		for _, r := range labelRunes {
-			rw := runewidth.RuneWidth(r)
-			if textWidth+rw > maxTextWidth {
-				break
-			}
-			textRunes = append(textRunes, r)
-			textWidth += rw
-		}
-		if len(textRunes) < len(labelRunes) && textWidth < maxTextWidth {
-			textRunes = append(textRunes, '…')
-			textWidth++
-		}
-		x := popupX + 2
-		for _, r := range textRunes {
-			put(x, y, r, style)
-			x += runewidth.RuneWidth(r)
-		}
-		if hasMeta && meta != "" {
-			x = popupX + popupWidth - 2 - metaWidth
-			for _, r := range meta {
-				put(x, y, r, style)
-				x += runewidth.RuneWidth(r)
-			}
-		}
+	if first > len(items)-rows {
+		first = len(items) - rows
 	}
 
-	// Keep the popup anchored to the completion's word start, but avoid
-	// covering the cursor when the cursor sits at the right edge.
-	_ = cursorX
+	completionPopup{
+		x:        popupX,
+		y:        popupY,
+		width:    popupWidth,
+		rows:     rows,
+		first:    first,
+		selected: selected,
+		items:    items,
+	}.display()
 }
 
 // Display displays the buffer and the statusline

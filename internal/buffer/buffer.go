@@ -92,9 +92,14 @@ type SharedBuffer struct {
 	Suggestions   []string
 	Completions   []string
 	CurSuggestion int
+
+	// CompletionLoc is the insertion point for a selected floating completion.
 	CompletionLoc Loc
-	// AutoCompletionAccepted is set by the popup's accept action so LSP
-	// plugins can avoid immediately reopening the menu for the inserted text.
+	// CompletionPopup distinguishes LSP popup completions from Micro's legacy
+	// inline completion cycling, which is still used by command/file prompts.
+	CompletionPopup bool
+	// AutoCompletionAccepted lets LSP plugins avoid immediately reopening the
+	// popup for text inserted by the accept action.
 	AutoCompletionAccepted bool
 
 	Messages []*Message
@@ -131,6 +136,7 @@ type SharedBuffer struct {
 func (b *SharedBuffer) insert(pos Loc, value []byte) {
 	b.isModified = true
 	b.HasSuggestions = false
+	b.CompletionPopup = false
 	b.LineArray.insert(pos, value)
 
 	inslines := bytes.Count(value, []byte{'\n'})
@@ -139,6 +145,7 @@ func (b *SharedBuffer) insert(pos Loc, value []byte) {
 func (b *SharedBuffer) remove(start, end Loc) []byte {
 	b.isModified = true
 	b.HasSuggestions = false
+	b.CompletionPopup = false
 	defer b.MarkModified(start.Y, end.Y)
 	return b.LineArray.remove(start, end)
 }
