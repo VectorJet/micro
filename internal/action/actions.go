@@ -871,7 +871,7 @@ func (h *BufPane) Autocomplete() bool {
 	return b.Autocomplete(buffer.BufferComplete)
 }
 
-// CycleAutocompleteBack cycles back in the autocomplete suggestion list
+// CycleAutocompleteBack cycles back in the autocomplete suggestion list.
 func (h *BufPane) CycleAutocompleteBack() bool {
 	if h.Cursor.HasSelection() {
 		return false
@@ -882,6 +882,54 @@ func (h *BufPane) CycleAutocompleteBack() bool {
 		return true
 	}
 	return false
+}
+
+// CycleAutocompleteForward cycles forward without editing the source buffer.
+func (h *BufPane) CycleAutocompleteForward() bool {
+	if h.Cursor.HasSelection() {
+		return false
+	}
+	if h.Buf.HasSuggestions {
+		h.Buf.CycleAutocomplete(true)
+		return true
+	}
+	return false
+}
+
+// AcceptCompletion inserts the selected suffix and closes the popup.
+func (h *BufPane) AcceptCompletion() bool {
+	b := h.Buf
+	if !b.HasSuggestions || len(b.Completions) == 0 {
+		return false
+	}
+	idx := b.CurSuggestion
+	if idx < 0 || idx >= len(b.Completions) {
+		return false
+	}
+
+	loc := b.CompletionLoc
+	completion := b.Completions[idx]
+	b.AutoCompletionAccepted = true
+	b.Insert(loc, completion)
+	h.Cursor.GotoLoc(loc.Move(util.CharacterCountInString(completion), b))
+	b.HasSuggestions = false
+	b.Suggestions = nil
+	b.Completions = nil
+	b.CurSuggestion = -1
+	h.Relocate()
+	return true
+}
+
+// CancelAutocomplete dismisses the popup without modifying source text.
+func (h *BufPane) CancelAutocomplete() bool {
+	if !h.Buf.HasSuggestions {
+		return false
+	}
+	h.Buf.HasSuggestions = false
+	h.Buf.Suggestions = nil
+	h.Buf.Completions = nil
+	h.Buf.CurSuggestion = -1
+	return true
 }
 
 // InsertTab inserts a tab or spaces

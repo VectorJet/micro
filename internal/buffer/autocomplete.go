@@ -23,20 +23,27 @@ func (b *Buffer) GetSuggestions() {
 
 }
 
-// Autocomplete starts the autocomplete process
+// Autocomplete starts the autocomplete process. Unlike Micro's stock
+// completion cycling, this keeps the user's source text unchanged while a
+// cursor-anchored popup is open; AcceptCompletion inserts the selected suffix.
 func (b *Buffer) Autocomplete(c Completer) bool {
 	b.Completions, b.Suggestions = c(b)
 	if len(b.Completions) != len(b.Suggestions) || len(b.Completions) == 0 {
+		b.HasSuggestions = false
 		return false
 	}
-	b.CurSuggestion = -1
-	b.CycleAutocomplete(true)
+	b.CurSuggestion = 0
+	b.CompletionLoc = b.GetActiveCursor().Loc
+	b.HasSuggestions = true
 	return true
 }
 
-// CycleAutocomplete moves to the next suggestion
+// CycleAutocomplete moves the selection through the popup without editing text.
 func (b *Buffer) CycleAutocomplete(forward bool) {
-	prevSuggestion := b.CurSuggestion
+	if len(b.Suggestions) == 0 {
+		b.HasSuggestions = false
+		return
+	}
 
 	if forward {
 		b.CurSuggestion++
@@ -48,18 +55,7 @@ func (b *Buffer) CycleAutocomplete(forward bool) {
 	} else if b.CurSuggestion < 0 {
 		b.CurSuggestion = len(b.Suggestions) - 1
 	}
-
-	c := b.GetActiveCursor()
-	start := c.Loc
-	end := c.Loc
-	if prevSuggestion < len(b.Suggestions) && prevSuggestion >= 0 {
-		start = end.Move(-util.CharacterCountInString(b.Completions[prevSuggestion]), b)
-	}
-
-	b.Replace(start, end, b.Completions[b.CurSuggestion])
-	if len(b.Suggestions) > 1 {
-		b.HasSuggestions = true
-	}
+	b.HasSuggestions = true
 }
 
 // GetWord gets the most recent word separated by any separator

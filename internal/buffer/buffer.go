@@ -92,6 +92,10 @@ type SharedBuffer struct {
 	Suggestions   []string
 	Completions   []string
 	CurSuggestion int
+	CompletionLoc Loc
+	// AutoCompletionAccepted is set by the popup's accept action so LSP
+	// plugins can avoid immediately reopening the menu for the inserted text.
+	AutoCompletionAccepted bool
 
 	Messages []*Message
 
